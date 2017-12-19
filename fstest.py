@@ -76,8 +76,8 @@ def test_init():
     print 80*'*'
 
 
-def rectest(dirname):
-    for i in range(4):
+def rectest(dirname, r=4):
+    for i in range(r):
         dircommand = ['sudo', 'pdp-flbl',
                       '{0}:0:0xffffffffffffff:ccnr'.format(i), dirname]
         res = subprocess.call(dircommand)
@@ -85,9 +85,9 @@ def rectest(dirname):
         for sub in os.listdir(dirname):
             entry = os.path.join(dirname, sub)
             if os.path.isdir(entry):
-                rectest(entry)
+                rectest(entry, i)
             else:
-                for i in range(4):
+                for i in range(r):
                     fcommand = ['sudo', 'pdp-flbl', '{0}'.format(i), entry]
                     res = subprocess.call(fcommand)
                     print 'set mac {0} level to {1} ...{2}'.format(i,
