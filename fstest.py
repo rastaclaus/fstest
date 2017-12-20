@@ -1,6 +1,8 @@
 import pytest
 import subprocess
+import sys
 import os
+from StringIO import StringIO
 
 ROOTDIR = '/testfs'
 FNULL = open(os.devnull, 'w')
@@ -9,52 +11,61 @@ subdirs = ('dir', 'subdir')
 
 
 def stRes(res):
-    return 'SUCSESS' if res == 0 else "FAIL"
+    return '...SUCSESS' if res == 0 else "...FAIL"
+
+
+def runCommand(command, supress=False):
+    scommand = command.split()
+
+    if not supress:
+        res = subprocess.call(scommand)
+    else:
+        FNULL = open('/dev/null', 'w')
+        res = subprocess.call(scommand, stdout=FNULL, stderr=subprocess.STDOUT)
+
+    return (command if not supress else '') + stRes(res)
 
 
 def setup_module(module):
     print("\n...basic setup into this module")
 
-    res = subprocess.call(['sudo', 'mkdir', ROOTDIR])
-    print 'create test root dir...{0}'.format(stRes(res))
+    command = 'sudo mkdir {0}'.format(ROOTDIR)
+    runCommand(command)
 
-    res = subprocess.call(['sudo', 'chown', 'user:disk', ROOTDIR])
-    print 'chown test root dir ...{0}'.format(stRes(res))
+    command = 'sudo chown user:disk {0}'.format(ROOTDIR)
+    runCommand(command)
     print 80*'*'
 
     for i, fs in enumerate(filesystems):
         dirname = os.path.join(ROOTDIR, fs)
 
-        res = subprocess.call(['sudo', 'mkdir', '-p', dirname])
-        print 'create {0}...{1}'.format(dirname, stRes(res))
+        command = 'sudo mkdir -p {0}'.format(dirname)
+        runCommand(command)
 
-        command = ['sudo', 'mkfs.{0}'.format(fs), '/dev/ram{0}'.format(i)]
-        res = subprocess.call(command, stdout=FNULL, stderr=subprocess.STDOUT)
-        print 'mkfs.{0} in /dev/ram{1}...{2}'.format(fs, i, stRes(res))
+        command = 'sudo mkfs.{0} /dev/ram{1}'.format(fs, i)
+        runCommand(command, supress=True)
 
-        command = ['sudo', 'mount', '/dev/ram{0}'.format(i), dirname]
-        res = subprocess.call(command)
-        print 'mount fs {0} to {1}...{2}'.format(fs, dirname, stRes(res))
+        command = 'sudo mount /dev/ram{0} {1}'.format(i, dirname)
+        runCommand(command)
 
         subdirname = dirname
         for subdir in subdirs:
             subdirname = os.path.join(subdirname, subdir)
-        command = ['sudo', 'mkdir', '-p', subdirname]
-        res = subprocess.call(command)
-        print 'create test subdirs...{0}'.format(stRes(res))
 
-        command = ['sudo', 'chown', '-R', 'user:disk', dirname]
-        res = subprocess.call(command)
-        print 'chown for {0} ... {1}'.format(dirname, stRes(res))
+        command = 'sudo mkdir -p {0}'.format(subdirname)
+        runCommand(command)
+
+        command = 'sudo chown -R user:disk {0}'.format(dirname)
+        runCommand(command)
 
         with open(os.path.join(subdirname, 'testfile.txt'), 'w') as f:
             f.write('This is a test file...\n')
+            print('fill file...done')
 
         print 80*'*'
 
-    command = ['sudo', 'pdp-flbl', '-f', '3:0:0xffffffffffffff:ccnr', ROOTDIR]
-    res = subprocess.call(command)
-    print 'set mac to test root dir ... {0}'.format(stRes(res))
+    command = 'sudo pdp-flbl -f 3:0:0xffffffffffffff:ccnr {0}'.format(ROOTDIR)
+    runCommand(command)
 
 
 def teardown_module(module):
@@ -74,26 +85,27 @@ def teardown_module(module):
 
 def test_init():
     print 80*'*'
+    assert True
 
 
-def rectest(dirname, r=4):
-    for i in range(r):
-        dircommand = ['sudo', 'pdp-flbl',
-                      '{0}:0:0xffffffffffffff:ccnr'.format(i), dirname]
-        res = subprocess.call(dircommand)
-        print 'set mac {0} level to {1} ...{2}'.format(i, dirname, stRes(res))
-        for sub in os.listdir(dirname):
-            entry = os.path.join(dirname, sub)
+dircommand = ('sudo pdp-flbl {0}:0:0xffffffffffffff:ccnr {1}')
+fcommand = 'sudo pdp-flbl {0} {1}'
+
+
+def rectest(dirname, r=4, indent=0):
+    for entry in os.listdir(dirname):
+        entry = os.path.join(dirname, entry)
+        for i in range(r):
             if os.path.isdir(entry):
-                rectest(entry, i)
+                print indent*' ', 'set:', entry, i, \
+                    runCommand(dircommand.format(i, entry), True)
+                rectest(entry, i+1, indent+4)
             else:
-                for i in range(r):
-                    fcommand = ['sudo', 'pdp-flbl', '{0}'.format(i), entry]
-                    res = subprocess.call(fcommand)
-                    print 'set mac {0} level to {1} ...{2}'.format(i,
-                                                                   entry,
-                                                                   stRes(res))
+                print indent*' ', 'set:', entry, i, \
+                    runCommand(fcommand.format(i, entry), True)
 
 
 def test_chmack():
+    print
     rectest(ROOTDIR)
+    print 80*'*'
